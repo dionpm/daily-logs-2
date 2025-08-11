@@ -1,191 +1,356 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
-<title>Daily Test Log</title>
-<link rel="manifest" href="manifest.webmanifest">
-<meta name="theme-color" content="#0f1320">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<link rel="apple-touch-icon" href="icon-192.png">
-<style>
-  :root{--bg:#0f1320;--card:#161a2b;--ink:#e8eaf6;--muted:#a6accd;--accent:#8ab4f8;--border:#2a3152;--danger:#ff6b6b;}
-  *{box-sizing:border-box}
-  body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,Segoe UI,Roboto}
-  header{padding:12px 14px;border-bottom:1px solid var(--border);display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-  header h1{font-size:18px;margin:0}
-  .wrap{max-width:1100px;margin:0 auto;padding:12px;display:grid;grid-template-columns:1fr;gap:12px}
-  @media (min-width:900px){ .wrap{grid-template-columns:320px 1fr;} }
-  .card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px}
-  .card h2{font-size:16px;margin:0 0 8px}
-  label{display:block;font-size:12px;color:var(--muted);margin:10px 0 6px}
-  input,select,button{width:100%;padding:10px;border-radius:10px;border:1px solid var(--border);background:#0e1221;color:var(--ink)}
-  option{color:#000}
-  .row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-  .actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
-  .note{font-size:12px;color:var(--muted)}
-  .warn{color:#ffd7d7}
-  table{width:100%;border-collapse:collapse;background:#0d1120;border:1px solid var(--border)}
-  th,td{border:1px solid var(--border);padding:6px 8px;text-align:center;font-size:13px}
-  th{background:#11162a;color:#c7ceea;position:sticky;top:0;z-index:1}
-  thead th.group{background:#10162b;font-weight:700}
-  .sticky-col{position:sticky;left:0;background:#10162b;z-index:2}
-  .day-col{width:84px}
-  .cell{min-width:64px}
-  .cell[contenteditable="true"]{outline:none}
-  .cell:focus{box-shadow:0 0 0 2px var(--accent) inset}
-  .toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:end}
-  .toolbar > div{flex:1;min-width:160px}
-  .danger{border-color:var(--danger); color:#ffd7d7}
-  @media print{
-    body{background:#fff;color:#000}
-    header,.no-print{display:none!important}
-    .wrap{grid-template-columns:1fr}
-    .card{border:none;padding:0}
-    th,td{border:1px solid #777;color:#000}
-    th{background:#eee;color:#000}
-    .sticky-col{position:static;background:#fff}
-  }
-</style>
-</head>
-<body>
-  <header>
-    <h1>Daily Test Log</h1>
-    <span id="warn" class="note warn"></span>
-  </header>
-
-  <div class="wrap">
-    <section class="card">
-      <h2>Setup</h2>
-      <div class="toolbar">
-        <div>
-          <label for="systemSel">System</label>
-          <select id="systemSel">
-            <option value="" disabled selected>-- Select System --</option>
-          </select>
-        </div>
-        <div>
-          <label for="monthSel">Month</label>
-          <input type="month" id="monthSel" />
-        </div>
-        <div>
-          <button id="btnBuild">Build Grid</button>
-        </div>
-      </div>
-
-      <hr style="border-color:var(--border);margin:12px 0" />
-
-      <h2>Import / Export</h2>
-      <div class="actions">
-        <input type="file" id="importFile" accept=".json" />
-        <button id="btnExportJSON">Export JSON</button>
-        <button id="btnExportCSV">Export CSV (month)</button>
-        <button id="btnPrint">Print</button>
-      </div>
-      <p class="note">Install this app (Add to Home Screen) for the best experience and offline use.</p>
-
-      <hr style="border-color:var(--border);margin:12px 0" />
-
-      <button id="toggleEdit">Edit Systems / Points / Fields</button>
-      <div id="editPanel" style="display:none;margin-top:10px">
-        <div class="row">
-          <div>
-            <h3 style="margin:8px 0">Systems</h3>
-            <div class="actions"><input id="newSystem" placeholder="Add new system" /><button id="addSystem">Add</button></div>
-            <ul id="sysList" style="list-style:none;padding-left:0;margin:8px 0"></ul>
-          </div>
-          <div>
-            <h3 style="margin:8px 0">For Selected System</h3>
-            <div class="actions"><input id="newPoint" placeholder="Add test point" /><button id="addPoint">Add</button></div>
-            <ul id="pointList" style="list-style:none;padding-left:0;margin:8px 0"></ul>
-            <div class="actions"><input id="newField" placeholder="Add field" /><button id="addField">Add</button></div>
-            <ul id="fieldList" style="list-style:none;padding-left:0;margin:8px 0"></ul>
-          </div>
-        </div>
-        <div class="actions"><button id="doneEdit">Done</button></div>
-      </div>
-    </section>
-
-    <section class="card">
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
-        <h2 id="gridTitle">Monthly Grid</h2>
-        <span id="status" class="note no-print"></span>
-      </div>
-      <div id="gridWrap" style="overflow:auto;max-height:70vh"><table id="grid"></table></div>
-      <p class="note no-print" style="margin-top:8px">Tap a cell to edit. It auto-saves. Export JSON to keep a copy.</p>
-    </section>
-  </div>
-
-<script>
-if ('serviceWorker' in navigator) { window.addEventListener('load', () => { navigator.serviceWorker.register('./sw.js').catch(console.error); }); }
-function storageAvailable(type){try{var s=window[type],x='__t__';s.setItem(x,x);s.removeItem(x);return true;}catch(e){return false;}}
-const HAS_LS = storageAvailable('localStorage');
-document.getElementById('warn').textContent = HAS_LS ? '' : 'Private mode may limit saving.';
-
-const CONFIG_KEY='cfg_v1'; const DATA_KEY='db_v1';
-const SEED = {
-  systems: ["Chilled Loop","Hot Loop","Laundry Boiler 1","Laundry Boiler 2","Food Boiler 1","Food Boiler 2","Cooling Tower 1","Cooling Tower 2","Condensate 1","Condensate 2"],
-  bySystem: {
-    "Chilled Loop":{points:["Supply","Return"], fields:["Conductivity","Sulfite","Posca"]},
-    "Hot Loop":{points:["Supply","Return"], fields:["Conductivity","Sulfite","Posca"]},
-    "Laundry Boiler 1":{points:["Feedwater","Boiler Water","Blowdown"], fields:["Conductivity","Sulfite","Posca"]},
-    "Laundry Boiler 2":{points:["Feedwater","Boiler Water","Blowdown"], fields:["Conductivity","Sulfite","Posca"]},
-    "Food Boiler 1":{points:["Feedwater","Boiler Water","Blowdown"], fields:["Conductivity","Sulfite","Posca"]},
-    "Food Boiler 2":{points:["Feedwater","Boiler Water","Blowdown"], fields:["Conductivity","Sulfite","Posca"]},
-    "Cooling Tower 1":{points:["Basin","Return","Makeup"], fields:["Conductivity","Sulfite","Posca"]},
-    "Cooling Tower 2":{points:["Basin","Return","Makeup"], fields:["Conductivity","Sulfite","Posca"]},
-    "Condensate 1":{points:["Sample"], fields:["Conductivity","Sulfite","Posca"]},
-    "Condensate 2":{points:["Sample"], fields:["Conductivity","Sulfite","Posca"]}
-  }
-};
-
-let CONFIG = SEED; let DB = {};
-try{ const c=localStorage.getItem(CONFIG_KEY); if(c) CONFIG=JSON.parse(c); const d=localStorage.getItem(DATA_KEY); if(d) DB=JSON.parse(d);}catch(e){}
-
-function saveAll(){ try{ localStorage.setItem(CONFIG_KEY, JSON.stringify(CONFIG)); localStorage.setItem(DATA_KEY, JSON.stringify(DB)); }catch(e){} }
-
-const systemSel=document.getElementById('systemSel'); const monthSel=document.getElementById('monthSel'); const grid=document.getElementById('grid'); const gridTitle=document.getElementById('gridTitle'); const statusEl=document.getElementById('status');
-
-function refreshSystemSelect(){
-  const opts = ['<option value="" disabled selected>-- Select System --</option>']
-    .concat(CONFIG.systems.map(s=>`<option>${s}</option>`));
-  systemSel.innerHTML = opts.join('');
-}
-
-function buildGrid(){
-  const sys=systemSel.value; const ym=monthSel.value;
-  if(!sys){ alert('Pick a system'); return; }
-  if(!ym){ alert('Pick a month'); return; }
-  const cfg = CONFIG.bySystem[sys] || {points:["Point 1"], fields:["Value"]};
-  const points=cfg.points, fields=cfg.fields;
-  const days = new Date(+ym.slice(0,4), +ym.slice(5,7), 0).getDate();
-  DB[sys]=DB[sys]||{}; DB[sys][ym]=DB[sys][ym]||{};
-  gridTitle.textContent = `${sys} — ${ym}`;
-  let html = '<thead><tr><th class="sticky-col day-col">Day</th>';
-  points.forEach(p=> html += `<th class="group" colspan="${fields.length}">${p}</th>`);
-  html += '</tr><tr><th class="sticky-col day-col">Date</th>';
-  points.forEach(p=> fields.forEach(f=> html += `<th>${f}</th>`));
-  html += '</tr></thead><tbody>';
-  for(let d=1; d<=days; d++){ const ds=String(d).padStart(2,'0'); const dateStr=`${ym}-${ds}`; const row=DB[sys][ym][ds]||{};
-    html += `<tr data-day="${ds}"><th class="sticky-col day-col">${dateStr}</th>`;
-    points.forEach(pt=>{ const obj=row[pt]||{}; fields.forEach(fd=>{ const val=obj[fd] ?? ''; html += `<td class="cell" contenteditable="true" data-point="${pt}" data-field="${fd}">${val}</td>`; }); });
-    html += '</tr>';
-  }
-  html += '</tbody>'; grid.innerHTML = html; grid.querySelectorAll('.cell').forEach(td=> td.addEventListener('blur', onCellEdit));
-}
-
-function onCellEdit(ev){
-  const td=ev.currentTarget, sys=systemSel.value, ym=monthSel.value, day=td.closest('tr').getAttribute('data-day'), pt=td.getAttribute('data-point'), fd=td.getAttribute('data-field'), val=td.textContent.trim();
-  DB[sys]=DB[sys]||{}; DB[sys][ym]=DB[sys][ym]||{}; DB[sys][ym][day]=DB[sys][ym][day]||{}; DB[sys][ym][day][pt]=DB[sys][ym][day][pt]||{}; DB[sys][ym][day][pt][fd]=val; saveAll(); statusEl.textContent='Saved'; setTimeout(()=>statusEl.textContent='',1000);
-}
-
-document.getElementById('btnBuild').addEventListener('click', buildGrid);
-
-(function init(){
-  refreshSystemSelect();
-  const now=new Date();
-  monthSel.value = now.toISOString().slice(0,7);
-})();
-</script>
-</body>
-</html>
+<html><head><meta name="viewport" content="width=device-width"><title>file:///C:/Users/dionm/AppData/Local/Temp/d989f2e7-e86c-4538-866c-2d7dec51c683_fix_kit_v2.zip.683/index.html</title><link rel="stylesheet" type="text/css" href="resource://content-accessible/viewsource.css"></head><body id="viewsource" style="tab-size: 4"><span id="line1"><span></span><span class="doctype">&lt;!DOCTYPE html&gt;</span><span>
+</span></span><span id="line2"><span></span><span>&lt;<span class="start-tag">html</span> <span class="attribute-name">lang</span>="<a class="attribute-value">en</a>"&gt;</span><span>
+</span></span><span id="line3"><span></span><span>&lt;<span class="start-tag">head</span>&gt;</span><span>
+</span></span><span id="line4"><span></span><span>&lt;<span class="start-tag">meta</span> <span class="attribute-name">charset</span>="<a class="attribute-value">utf-8</a>" <span>/</span>&gt;</span><span>
+</span></span><span id="line5"><span></span><span>&lt;<span class="start-tag">meta</span> <span class="attribute-name">name</span>="<a class="attribute-value">viewport</a>" <span class="attribute-name">content</span>="<a class="attribute-value">width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover</a>" <span>/</span>&gt;</span><span>
+</span></span><span id="line6"><span></span><span>&lt;<span class="start-tag">title</span>&gt;</span><span>Daily Test Log</span><span>&lt;/<span class="end-tag">title</span>&gt;</span><span>
+</span></span><span id="line7"><span></span><span>&lt;<span class="start-tag">link</span> <span class="attribute-name">rel</span>="<a class="attribute-value">manifest</a>" <span class="attribute-name">href</span>="<a class="attribute-value" href="view-source:file:///C:/Users/dionm/AppData/Local/Temp/d989f2e7-e86c-4538-866c-2d7dec51c683_fix_kit_v2.zip.683/manifest.webmanifest">manifest.webmanifest</a>"&gt;</span><span>
+</span></span><span id="line8"><span></span><span>&lt;<span class="start-tag">meta</span> <span class="attribute-name">name</span>="<a class="attribute-value">theme-color</a>" <span class="attribute-name">content</span>="<a class="attribute-value">#0f1320</a>"&gt;</span><span>
+</span></span><span id="line9"><span></span><span>&lt;<span class="start-tag">meta</span> <span class="attribute-name">name</span>="<a class="attribute-value">apple-mobile-web-app-capable</a>" <span class="attribute-name">content</span>="<a class="attribute-value">yes</a>"&gt;</span><span>
+</span></span><span id="line10"><span></span><span>&lt;<span class="start-tag">link</span> <span class="attribute-name">rel</span>="<a class="attribute-value">apple-touch-icon</a>" <span class="attribute-name">href</span>="<a class="attribute-value" href="view-source:file:///C:/Users/dionm/AppData/Local/Temp/d989f2e7-e86c-4538-866c-2d7dec51c683_fix_kit_v2.zip.683/icon-192.png">icon-192.png</a>"&gt;</span><span>
+</span></span><span id="line11"><span></span><span>&lt;<span class="start-tag">style</span>&gt;</span><span>
+</span></span><span id="line12"><span>  :root{--bg:#0f1320;--card:#161a2b;--ink:#e8eaf6;--muted:#a6accd;--accent:#8ab4f8;--border:#2a3152;--danger:#ff6b6b;}
+</span></span><span id="line13"><span>  *{box-sizing:border-box}
+</span></span><span id="line14"><span>  body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,Segoe UI,Roboto}
+</span></span><span id="line15"><span>  header{padding:12px 14px;border-bottom:1px solid var(--border);display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+</span></span><span id="line16"><span>  header h1{font-size:18px;margin:0}
+</span></span><span id="line17"><span>  .wrap{max-width:1100px;margin:0 auto;padding:12px;display:grid;grid-template-columns:1fr;gap:12px}
+</span></span><span id="line18"><span>  @media (min-width:900px){ .wrap{grid-template-columns:320px 1fr;} }
+</span></span><span id="line19"><span>  .card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px}
+</span></span><span id="line20"><span>  .card h2{font-size:16px;margin:0 0 8px}
+</span></span><span id="line21"><span>  label{display:block;font-size:12px;color:var(--muted);margin:10px 0 6px}
+</span></span><span id="line22"><span>  input,select,button{width:100%;padding:10px;border-radius:10px;border:1px solid var(--border);background:#0e1221;color:var(--ink)}
+</span></span><span id="line23"><span>  option{color:#000}
+</span></span><span id="line24"><span>  .row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+</span></span><span id="line25"><span>  .actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+</span></span><span id="line26"><span>  .note{font-size:12px;color:var(--muted)}
+</span></span><span id="line27"><span>  .warn{color:#ffd7d7}
+</span></span><span id="line28"><span>  table{width:100%;border-collapse:collapse;background:#0d1120;border:1px solid var(--border)}
+</span></span><span id="line29"><span>  th,td{border:1px solid var(--border);padding:6px 8px;text-align:center;font-size:13px}
+</span></span><span id="line30"><span>  th{background:#11162a;color:#c7ceea;position:sticky;top:0;z-index:1}
+</span></span><span id="line31"><span>  thead th.group{background:#10162b;font-weight:700}
+</span></span><span id="line32"><span>  .sticky-col{position:sticky;left:0;background:#10162b;z-index:2}
+</span></span><span id="line33"><span>  .day-col{width:84px}
+</span></span><span id="line34"><span>  .cell{min-width:64px}
+</span></span><span id="line35"><span>  .cell[contenteditable="true"]{outline:none}
+</span></span><span id="line36"><span>  .cell:focus{box-shadow:0 0 0 2px var(--accent) inset}
+</span></span><span id="line37"><span>  .toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:end}
+</span></span><span id="line38"><span>  .toolbar &gt; div{flex:1;min-width:160px}
+</span></span><span id="line39"><span>  .danger{border-color:var(--danger); color:#ffd7d7}
+</span></span><span id="line40"><span>  @media print{
+</span></span><span id="line41"><span>    body{background:#fff;color:#000}
+</span></span><span id="line42"><span>    header,.no-print{display:none!important}
+</span></span><span id="line43"><span>    .wrap{grid-template-columns:1fr}
+</span></span><span id="line44"><span>    .card{border:none;padding:0}
+</span></span><span id="line45"><span>    th,td{border:1px solid #777;color:#000}
+</span></span><span id="line46"><span>    th{background:#eee;color:#000}
+</span></span><span id="line47"><span>    .sticky-col{position:static;background:#fff}
+</span></span><span id="line48"><span>  }
+</span></span><span id="line49"><span></span><span>&lt;/<span class="end-tag">style</span>&gt;</span><span>
+</span></span><span id="line50"><span></span><span>&lt;/<span class="end-tag">head</span>&gt;</span><span>
+</span></span><span id="line51"><span></span><span>&lt;<span class="start-tag">body</span>&gt;</span><span>
+</span></span><span id="line52"><span>  </span><span>&lt;<span class="start-tag">header</span>&gt;</span><span>
+</span></span><span id="line53"><span>    </span><span>&lt;<span class="start-tag">h1</span>&gt;</span><span>Daily Test Log</span><span>&lt;/<span class="end-tag">h1</span>&gt;</span><span>
+</span></span><span id="line54"><span>    </span><span>&lt;<span class="start-tag">span</span> <span class="attribute-name">id</span>="<a class="attribute-value">warn</a>" <span class="attribute-name">class</span>="<a class="attribute-value">note warn</a>"&gt;</span><span></span><span>&lt;/<span class="end-tag">span</span>&gt;</span><span>
+</span></span><span id="line55"><span>  </span><span>&lt;/<span class="end-tag">header</span>&gt;</span><span>
+</span></span><span id="line56"><span>
+</span></span><span id="line57"><span>  </span><span>&lt;<span class="start-tag">div</span> <span class="attribute-name">class</span>="<a class="attribute-value">wrap</a>"&gt;</span><span>
+</span></span><span id="line58"><span>    </span><span>&lt;<span class="start-tag">section</span> <span class="attribute-name">class</span>="<a class="attribute-value">card</a>"&gt;</span><span>
+</span></span><span id="line59"><span>      </span><span>&lt;<span class="start-tag">h2</span>&gt;</span><span>Setup</span><span>&lt;/<span class="end-tag">h2</span>&gt;</span><span>
+</span></span><span id="line60"><span>      </span><span>&lt;<span class="start-tag">div</span> <span class="attribute-name">class</span>="<a class="attribute-value">toolbar</a>"&gt;</span><span>
+</span></span><span id="line61"><span>        </span><span>&lt;<span class="start-tag">div</span>&gt;</span><span>
+</span></span><span id="line62"><span>          </span><span>&lt;<span class="start-tag">label</span> <span class="attribute-name">for</span>="<a class="attribute-value">systemSel</a>"&gt;</span><span>System</span><span>&lt;/<span class="end-tag">label</span>&gt;</span><span>
+</span></span><span id="line63"><span>          </span><span>&lt;<span class="start-tag">select</span> <span class="attribute-name">id</span>="<a class="attribute-value">systemSel</a>"&gt;</span><span>
+</span></span><span id="line64"><span>            </span><span>&lt;<span class="start-tag">option</span> <span class="attribute-name">value</span>="<a class="attribute-value"></a>" <span class="attribute-name">disabled</span> <span class="attribute-name">selected</span>&gt;</span><span>-- Select System --</span><span>&lt;/<span class="end-tag">option</span>&gt;</span><span>
+</span></span><span id="line65"><span>          </span><span>&lt;/<span class="end-tag">select</span>&gt;</span><span>
+</span></span><span id="line66"><span>        </span><span>&lt;/<span class="end-tag">div</span>&gt;</span><span>
+</span></span><span id="line67"><span>        </span><span>&lt;<span class="start-tag">div</span>&gt;</span><span>
+</span></span><span id="line68"><span>          </span><span>&lt;<span class="start-tag">label</span> <span class="attribute-name">for</span>="<a class="attribute-value">monthSel</a>"&gt;</span><span>Month</span><span>&lt;/<span class="end-tag">label</span>&gt;</span><span>
+</span></span><span id="line69"><span>          </span><span>&lt;<span class="start-tag">input</span> <span class="attribute-name">type</span>="<a class="attribute-value">month</a>" <span class="attribute-name">id</span>="<a class="attribute-value">monthSel</a>" <span>/</span>&gt;</span><span>
+</span></span><span id="line70"><span>        </span><span>&lt;/<span class="end-tag">div</span>&gt;</span><span>
+</span></span><span id="line71"><span>        </span><span>&lt;<span class="start-tag">div</span>&gt;</span><span>
+</span></span><span id="line72"><span>          </span><span>&lt;<span class="start-tag">button</span> <span class="attribute-name">id</span>="<a class="attribute-value">btnBuild</a>"&gt;</span><span>Build Grid</span><span>&lt;/<span class="end-tag">button</span>&gt;</span><span>
+</span></span><span id="line73"><span>        </span><span>&lt;/<span class="end-tag">div</span>&gt;</span><span>
+</span></span><span id="line74"><span>      </span><span>&lt;/<span class="end-tag">div</span>&gt;</span><span>
+</span></span><span id="line75"><span>
+</span></span><span id="line76"><span>      </span><span>&lt;<span class="start-tag">hr</span> <span class="attribute-name">style</span>="<a class="attribute-value">border-color:var(--border);margin:12px 0</a>" <span>/</span>&gt;</span><span>
+</span></span><span id="line77"><span>
+</span></span><span id="line78"><span>      </span><span>&lt;<span class="start-tag">h2</span>&gt;</span><span>Import / Export</span><span>&lt;/<span class="end-tag">h2</span>&gt;</span><span>
+</span></span><span id="line79"><span>      </span><span>&lt;<span class="start-tag">div</span> <span class="attribute-name">class</span>="<a class="attribute-value">actions</a>"&gt;</span><span>
+</span></span><span id="line80"><span>        </span><span>&lt;<span class="start-tag">input</span> <span class="attribute-name">type</span>="<a class="attribute-value">file</a>" <span class="attribute-name">id</span>="<a class="attribute-value">importFile</a>" <span class="attribute-name">accept</span>="<a class="attribute-value">.json</a>" <span>/</span>&gt;</span><span>
+</span></span><span id="line81"><span>        </span><span>&lt;<span class="start-tag">button</span> <span class="attribute-name">id</span>="<a class="attribute-value">btnExportJSON</a>"&gt;</span><span>Export JSON</span><span>&lt;/<span class="end-tag">button</span>&gt;</span><span>
+</span></span><span id="line82"><span>        </span><span>&lt;<span class="start-tag">button</span> <span class="attribute-name">id</span>="<a class="attribute-value">btnExportCSV</a>"&gt;</span><span>Export CSV (month)</span><span>&lt;/<span class="end-tag">button</span>&gt;</span><span>
+</span></span><span id="line83"><span>        </span><span>&lt;<span class="start-tag">button</span> <span class="attribute-name">id</span>="<a class="attribute-value">btnPrint</a>"&gt;</span><span>Print</span><span>&lt;/<span class="end-tag">button</span>&gt;</span><span>
+</span></span><span id="line84"><span>      </span><span>&lt;/<span class="end-tag">div</span>&gt;</span><span>
+</span></span><span id="line85"><span>      </span><span>&lt;<span class="start-tag">p</span> <span class="attribute-name">class</span>="<a class="attribute-value">note</a>"&gt;</span><span>Install this app (Add to Home Screen) for the best experience and offline use.</span><span>&lt;/<span class="end-tag">p</span>&gt;</span><span>
+</span></span><span id="line86"><span>
+</span></span><span id="line87"><span>      </span><span>&lt;<span class="start-tag">hr</span> <span class="attribute-name">style</span>="<a class="attribute-value">border-color:var(--border);margin:12px 0</a>" <span>/</span>&gt;</span><span>
+</span></span><span id="line88"><span>
+</span></span><span id="line89"><span>      </span><span>&lt;<span class="start-tag">button</span> <span class="attribute-name">id</span>="<a class="attribute-value">toggleEdit</a>"&gt;</span><span>Edit Systems / Points / Fields</span><span>&lt;/<span class="end-tag">button</span>&gt;</span><span>
+</span></span><span id="line90"><span>      </span><span>&lt;<span class="start-tag">div</span> <span class="attribute-name">id</span>="<a class="attribute-value">editPanel</a>" <span class="attribute-name">style</span>="<a class="attribute-value">display:none;margin-top:10px</a>"&gt;</span><span>
+</span></span><span id="line91"><span>        </span><span>&lt;<span class="start-tag">div</span> <span class="attribute-name">class</span>="<a class="attribute-value">row</a>"&gt;</span><span>
+</span></span><span id="line92"><span>          </span><span>&lt;<span class="start-tag">div</span>&gt;</span><span>
+</span></span><span id="line93"><span>            </span><span>&lt;<span class="start-tag">h3</span> <span class="attribute-name">style</span>="<a class="attribute-value">margin:8px 0</a>"&gt;</span><span>Systems</span><span>&lt;/<span class="end-tag">h3</span>&gt;</span><span>
+</span></span><span id="line94"><span>            </span><span>&lt;<span class="start-tag">div</span> <span class="attribute-name">class</span>="<a class="attribute-value">actions</a>"&gt;</span><span></span><span>&lt;<span class="start-tag">input</span> <span class="attribute-name">id</span>="<a class="attribute-value">newSystem</a>" <span class="attribute-name">placeholder</span>="<a class="attribute-value">Add new system</a>" <span>/</span>&gt;</span><span></span><span>&lt;<span class="start-tag">button</span> <span class="attribute-name">id</span>="<a class="attribute-value">addSystem</a>"&gt;</span><span>Add</span><span>&lt;/<span class="end-tag">button</span>&gt;</span><span></span><span>&lt;/<span class="end-tag">div</span>&gt;</span><span>
+</span></span><span id="line95"><span>            </span><span>&lt;<span class="start-tag">ul</span> <span class="attribute-name">id</span>="<a class="attribute-value">sysList</a>" <span class="attribute-name">style</span>="<a class="attribute-value">list-style:none;padding-left:0;margin:8px 0</a>"&gt;</span><span></span><span>&lt;/<span class="end-tag">ul</span>&gt;</span><span>
+</span></span><span id="line96"><span>          </span><span>&lt;/<span class="end-tag">div</span>&gt;</span><span>
+</span></span><span id="line97"><span>          </span><span>&lt;<span class="start-tag">div</span>&gt;</span><span>
+</span></span><span id="line98"><span>            </span><span>&lt;<span class="start-tag">h3</span> <span class="attribute-name">style</span>="<a class="attribute-value">margin:8px 0</a>"&gt;</span><span>For Selected System</span><span>&lt;/<span class="end-tag">h3</span>&gt;</span><span>
+</span></span><span id="line99"><span>            </span><span>&lt;<span class="start-tag">div</span> <span class="attribute-name">class</span>="<a class="attribute-value">actions</a>"&gt;</span><span></span><span>&lt;<span class="start-tag">input</span> <span class="attribute-name">id</span>="<a class="attribute-value">newPoint</a>" <span class="attribute-name">placeholder</span>="<a class="attribute-value">Add test point</a>" <span>/</span>&gt;</span><span></span><span>&lt;<span class="start-tag">button</span> <span class="attribute-name">id</span>="<a class="attribute-value">addPoint</a>"&gt;</span><span>Add</span><span>&lt;/<span class="end-tag">button</span>&gt;</span><span></span><span>&lt;/<span class="end-tag">div</span>&gt;</span><span>
+</span></span><span id="line100"><span>            </span><span>&lt;<span class="start-tag">ul</span> <span class="attribute-name">id</span>="<a class="attribute-value">pointList</a>" <span class="attribute-name">style</span>="<a class="attribute-value">list-style:none;padding-left:0;margin:8px 0</a>"&gt;</span><span></span><span>&lt;/<span class="end-tag">ul</span>&gt;</span><span>
+</span></span><span id="line101"><span>            </span><span>&lt;<span class="start-tag">div</span> <span class="attribute-name">class</span>="<a class="attribute-value">actions</a>"&gt;</span><span></span><span>&lt;<span class="start-tag">input</span> <span class="attribute-name">id</span>="<a class="attribute-value">newField</a>" <span class="attribute-name">placeholder</span>="<a class="attribute-value">Add field</a>" <span>/</span>&gt;</span><span></span><span>&lt;<span class="start-tag">button</span> <span class="attribute-name">id</span>="<a class="attribute-value">addField</a>"&gt;</span><span>Add</span><span>&lt;/<span class="end-tag">button</span>&gt;</span><span></span><span>&lt;/<span class="end-tag">div</span>&gt;</span><span>
+</span></span><span id="line102"><span>            </span><span>&lt;<span class="start-tag">ul</span> <span class="attribute-name">id</span>="<a class="attribute-value">fieldList</a>" <span class="attribute-name">style</span>="<a class="attribute-value">list-style:none;padding-left:0;margin:8px 0</a>"&gt;</span><span></span><span>&lt;/<span class="end-tag">ul</span>&gt;</span><span>
+</span></span><span id="line103"><span>          </span><span>&lt;/<span class="end-tag">div</span>&gt;</span><span>
+</span></span><span id="line104"><span>        </span><span>&lt;/<span class="end-tag">div</span>&gt;</span><span>
+</span></span><span id="line105"><span>        </span><span>&lt;<span class="start-tag">div</span> <span class="attribute-name">class</span>="<a class="attribute-value">actions</a>"&gt;</span><span></span><span>&lt;<span class="start-tag">button</span> <span class="attribute-name">id</span>="<a class="attribute-value">doneEdit</a>"&gt;</span><span>Done</span><span>&lt;/<span class="end-tag">button</span>&gt;</span><span></span><span>&lt;/<span class="end-tag">div</span>&gt;</span><span>
+</span></span><span id="line106"><span>      </span><span>&lt;/<span class="end-tag">div</span>&gt;</span><span>
+</span></span><span id="line107"><span>    </span><span>&lt;/<span class="end-tag">section</span>&gt;</span><span>
+</span></span><span id="line108"><span>
+</span></span><span id="line109"><span>    </span><span>&lt;<span class="start-tag">section</span> <span class="attribute-name">class</span>="<a class="attribute-value">card</a>"&gt;</span><span>
+</span></span><span id="line110"><span>      </span><span>&lt;<span class="start-tag">div</span> <span class="attribute-name">style</span>="<a class="attribute-value">display:flex;justify-content:space-between;align-items:center;gap:8px</a>"&gt;</span><span>
+</span></span><span id="line111"><span>        </span><span>&lt;<span class="start-tag">h2</span> <span class="attribute-name">id</span>="<a class="attribute-value">gridTitle</a>"&gt;</span><span>Monthly Grid</span><span>&lt;/<span class="end-tag">h2</span>&gt;</span><span>
+</span></span><span id="line112"><span>        </span><span>&lt;<span class="start-tag">span</span> <span class="attribute-name">id</span>="<a class="attribute-value">status</a>" <span class="attribute-name">class</span>="<a class="attribute-value">note no-print</a>"&gt;</span><span></span><span>&lt;/<span class="end-tag">span</span>&gt;</span><span>
+</span></span><span id="line113"><span>      </span><span>&lt;/<span class="end-tag">div</span>&gt;</span><span>
+</span></span><span id="line114"><span>      </span><span>&lt;<span class="start-tag">div</span> <span class="attribute-name">id</span>="<a class="attribute-value">gridWrap</a>" <span class="attribute-name">style</span>="<a class="attribute-value">overflow:auto;max-height:70vh</a>"&gt;</span><span></span><span>&lt;<span class="start-tag">table</span> <span class="attribute-name">id</span>="<a class="attribute-value">grid</a>"&gt;</span><span></span><span>&lt;/<span class="end-tag">table</span>&gt;</span><span></span><span>&lt;/<span class="end-tag">div</span>&gt;</span><span>
+</span></span><span id="line115"><span>      </span><span>&lt;<span class="start-tag">p</span> <span class="attribute-name">class</span>="<a class="attribute-value">note no-print</a>" <span class="attribute-name">style</span>="<a class="attribute-value">margin-top:8px</a>"&gt;</span><span>Tap a cell to edit. It auto-saves. Export JSON to keep a copy.</span><span>&lt;/<span class="end-tag">p</span>&gt;</span><span>
+</span></span><span id="line116"><span>    </span><span>&lt;/<span class="end-tag">section</span>&gt;</span><span>
+</span></span><span id="line117"><span>  </span><span>&lt;/<span class="end-tag">div</span>&gt;</span><span>
+</span></span><span id="line118"><span>
+</span></span><span id="line119"><span></span><span>&lt;<span class="start-tag">script</span>&gt;</span><span>
+</span></span><span id="line120"><span>// --- Service Worker ---
+</span></span><span id="line121"><span>if ('serviceWorker' in navigator) {
+</span></span><span id="line122"><span>  window.addEventListener('load', () =&gt; {
+</span></span><span id="line123"><span>    navigator.serviceWorker.register('./sw.js').catch(console.error);
+</span></span><span id="line124"><span>  });
+</span></span><span id="line125"><span>}
+</span></span><span id="line126"><span>
+</span></span><span id="line127"><span>// --- Month input fallback for older browsers ---
+</span></span><span id="line128"><span>(function ensureMonthInput(){
+</span></span><span id="line129"><span>  const ip = document.getElementById('monthSel');
+</span></span><span id="line130"><span>  const test = document.createElement('input'); test.setAttribute('type','month'); 
+</span></span><span id="line131"><span>  if (test.type !== 'month') {
+</span></span><span id="line132"><span>    // Fallback to YYYY-MM text
+</span></span><span id="line133"><span>    ip.setAttribute('type','text');
+</span></span><span id="line134"><span>    ip.setAttribute('placeholder','YYYY-MM');
+</span></span><span id="line135"><span>    ip.addEventListener('blur', () =&gt; {
+</span></span><span id="line136"><span>      const v = ip.value.trim();
+</span></span><span id="line137"><span>      if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(v)){ alert('Enter month as YYYY-MM'); ip.focus(); }
+</span></span><span id="line138"><span>    });
+</span></span><span id="line139"><span>  }
+</span></span><span id="line140"><span>})();
+</span></span><span id="line141"><span>
+</span></span><span id="line142"><span>// --- Storage indicator ---
+</span></span><span id="line143"><span>function storageAvailable(type){try{var s=window[type],x='__t__';s.setItem(x,x);s.removeItem(x);return true;}catch(e){return false;}}
+</span></span><span id="line144"><span>const HAS_LS = storageAvailable('localStorage');
+</span></span><span id="line145"><span>document.getElementById('warn').textContent = HAS_LS ? '' : 'Private mode may limit saving.';
+</span></span><span id="line146"><span>
+</span></span><span id="line147"><span>// --- Keys &amp; Seed ---
+</span></span><span id="line148"><span>const CONFIG_KEY='cfg_v1'; const DATA_KEY='db_v1';
+</span></span><span id="line149"><span>const SEED = {
+</span></span><span id="line150"><span>  systems: ["Chilled Loop","Hot Loop","Laundry Boiler 1","Laundry Boiler 2","Food Boiler 1","Food Boiler 2","Cooling Tower 1","Cooling Tower 2","Condensate 1","Condensate 2"],
+</span></span><span id="line151"><span>  bySystem: {
+</span></span><span id="line152"><span>    "Chilled Loop":{points:["Supply","Return"], fields:["Conductivity","Sulfite","Posca"]},
+</span></span><span id="line153"><span>    "Hot Loop":{points:["Supply","Return"], fields:["Conductivity","Sulfite","Posca"]},
+</span></span><span id="line154"><span>    "Laundry Boiler 1":{points:["Feedwater","Boiler Water","Blowdown"], fields:["Conductivity","Sulfite","Posca"]},
+</span></span><span id="line155"><span>    "Laundry Boiler 2":{points:["Feedwater","Boiler Water","Blowdown"], fields:["Conductivity","Sulfite","Posca"]},
+</span></span><span id="line156"><span>    "Food Boiler 1":{points:["Feedwater","Boiler Water","Blowdown"], fields:["Conductivity","Sulfite","Posca"]},
+</span></span><span id="line157"><span>    "Food Boiler 2":{points:["Feedwater","Boiler Water","Blowdown"], fields:["Conductivity","Sulfite","Posca"]},
+</span></span><span id="line158"><span>    "Cooling Tower 1":{points:["Basin","Return","Makeup"], fields:["Conductivity","Sulfite","Posca"]},
+</span></span><span id="line159"><span>    "Cooling Tower 2":{points:["Basin","Return","Makeup"], fields:["Conductivity","Sulfite","Posca"]},
+</span></span><span id="line160"><span>    "Condensate 1":{points:["Sample"], fields:["Conductivity","Sulfite","Posca"]},
+</span></span><span id="line161"><span>    "Condensate 2":{points:["Sample"], fields:["Conductivity","Sulfite","Posca"]}
+</span></span><span id="line162"><span>  }
+</span></span><span id="line163"><span>};
+</span></span><span id="line164"><span>let CONFIG = SEED; let DB = {};
+</span></span><span id="line165"><span>try{ const c=localStorage.getItem(CONFIG_KEY); if(c) CONFIG=JSON.parse(c); const d=localStorage.getItem(DATA_KEY); if(d) DB=JSON.parse(d);}catch(e){}
+</span></span><span id="line166"><span>function saveAll(){ try{ localStorage.setItem(CONFIG_KEY, JSON.stringify(CONFIG)); localStorage.setItem(DATA_KEY, JSON.stringify(DB)); }catch(e){} }
+</span></span><span id="line167"><span>
+</span></span><span id="line168"><span>// --- Elements ---
+</span></span><span id="line169"><span>const systemSel=document.getElementById('systemSel'); const monthSel=document.getElementById('monthSel');
+</span></span><span id="line170"><span>const grid=document.getElementById('grid'); const gridTitle=document.getElementById('gridTitle'); const statusEl=document.getElementById('status');
+</span></span><span id="line171"><span>const toggleEdit=document.getElementById('toggleEdit'); const editPanel=document.getElementById('editPanel'); const doneEdit=document.getElementById('doneEdit');
+</span></span><span id="line172"><span>const sysList=document.getElementById('sysList'); const pointList=document.getElementById('pointList'); const fieldList=document.getElementById('fieldList');
+</span></span><span id="line173"><span>const newSystem=document.getElementById('newSystem'); const addSystem=document.getElementById('addSystem');
+</span></span><span id="line174"><span>const newPoint=document.getElementById('newPoint'); const addPoint=document.getElementById('addPoint');
+</span></span><span id="line175"><span>const newField=document.getElementById('newField'); const addField=document.getElementById('addField');
+</span></span><span id="line176"><span>const btnExportJSON=document.getElementById('btnExportJSON'); const btnExportCSV=document.getElementById('btnExportCSV'); const btnPrint=document.getElementById('btnPrint'); const importFile=document.getElementById('importFile');
+</span></span><span id="line177"><span>
+</span></span><span id="line178"><span>// --- UI helpers ---
+</span></span><span id="line179"><span>function refreshSystemSelect(){
+</span></span><span id="line180"><span>  const opts = ['</span><span>&lt;o</span><span>ption value="" disabled selected&gt;-- Select System --</span><span>&lt;/<span></span>o</span><span>ption&gt;']
+</span></span><span id="line181"><span>    .concat(CONFIG.systems.map(s=&gt;`</span><span>&lt;o</span><span>ption&gt;${s}</span><span>&lt;/<span></span>o</span><span>ption&gt;`));
+</span></span><span id="line182"><span>  systemSel.innerHTML = opts.join('');
+</span></span><span id="line183"><span>}
+</span></span><span id="line184"><span>function status(msg){ statusEl.textContent=msg; setTimeout(()=&gt;statusEl.textContent='',1200); }
+</span></span><span id="line185"><span>
+</span></span><span id="line186"><span>// --- Grid build &amp; edit ---
+</span></span><span id="line187"><span>function buildGrid(){
+</span></span><span id="line188"><span>  const sys=systemSel.value; const ym=monthSel.value;
+</span></span><span id="line189"><span>  if(!sys){ alert('Pick a system'); return; }
+</span></span><span id="line190"><span>  if(!ym){ alert('Pick a month'); return; }
+</span></span><span id="line191"><span>  const cfg = CONFIG.bySystem[sys] || {points:["Point 1"], fields:["Value"]};
+</span></span><span id="line192"><span>  const points=cfg.points, fields=cfg.fields;
+</span></span><span id="line193"><span>  const days = new Date(+ym.slice(0,4), +ym.slice(5,7), 0).getDate();
+</span></span><span id="line194"><span>  DB[sys]=DB[sys]||{}; DB[sys][ym]=DB[sys][ym]||{};
+</span></span><span id="line195"><span>  gridTitle.textContent = `${sys} — ${ym}`;
+</span></span><span id="line196"><span>  let html = '</span><span>&lt;t</span><span>head&gt;</span><span>&lt;t</span><span>r&gt;</span><span>&lt;t</span><span>h class="sticky-col day-col"&gt;Day</span><span>&lt;/<span></span>t</span><span>h&gt;';
+</span></span><span id="line197"><span>  points.forEach(p=&gt; html += `</span><span>&lt;t</span><span>h class="group" colspan="${fields.length}"&gt;${p}</span><span>&lt;/<span></span>t</span><span>h&gt;`);
+</span></span><span id="line198"><span>  html += '</span><span>&lt;/<span></span>t</span><span>r&gt;</span><span>&lt;t</span><span>r&gt;</span><span>&lt;t</span><span>h class="sticky-col day-col"&gt;Date</span><span>&lt;/<span></span>t</span><span>h&gt;';
+</span></span><span id="line199"><span>  points.forEach(p=&gt; fields.forEach(f=&gt; html += `</span><span>&lt;t</span><span>h&gt;${f}</span><span>&lt;/<span></span>t</span><span>h&gt;`));
+</span></span><span id="line200"><span>  html += '</span><span>&lt;/<span></span>t</span><span>r&gt;</span><span>&lt;/<span></span>t</span><span>head&gt;</span><span>&lt;t</span><span>body&gt;';
+</span></span><span id="line201"><span>  for(let d=1; d</span><span>&lt;=</span><span>days; d++){
+</span></span><span id="line202"><span>    const ds=String(d).padStart(2,'0'); const dateStr=`${ym}-${ds}`; const row=DB[sys][ym][ds]||{};
+</span></span><span id="line203"><span>    html += `</span><span>&lt;t</span><span>r data-day="${ds}"&gt;</span><span>&lt;t</span><span>h class="sticky-col day-col"&gt;${dateStr}</span><span>&lt;/<span></span>t</span><span>h&gt;`;
+</span></span><span id="line204"><span>    points.forEach(pt=&gt;{ const obj=row[pt]||{}; fields.forEach(fd=&gt;{ const val=obj[fd] ?? ''; html += `</span><span>&lt;t</span><span>d class="cell" contenteditable="true" data-point="${pt}" data-field="${fd}"&gt;${val}</span><span>&lt;/<span></span>t</span><span>d&gt;`; }); });
+</span></span><span id="line205"><span>    html += '</span><span>&lt;/<span></span>t</span><span>r&gt;';
+</span></span><span id="line206"><span>  }
+</span></span><span id="line207"><span>  html += '</span><span>&lt;/<span></span>t</span><span>body&gt;'; grid.innerHTML = html;
+</span></span><span id="line208"><span>  grid.querySelectorAll('.cell').forEach(td=&gt; td.addEventListener('blur', onCellEdit));
+</span></span><span id="line209"><span>}
+</span></span><span id="line210"><span>function onCellEdit(ev){
+</span></span><span id="line211"><span>  const td=ev.currentTarget, sys=systemSel.value, ym=monthSel.value, day=td.closest('tr').getAttribute('data-day'), pt=td.getAttribute('data-point'), fd=td.getAttribute('data-field'), val=td.textContent.trim();
+</span></span><span id="line212"><span>  DB[sys]=DB[sys]||{}; DB[sys][ym]=DB[sys][ym]||{}; DB[sys][ym][day]=DB[sys][ym][day]||{}; DB[sys][ym][day][pt]=DB[sys][ym][day][pt]||{}; DB[sys][ym][day][pt][fd]=val; saveAll(); status('Saved');
+</span></span><span id="line213"><span>}
+</span></span><span id="line214"><span>document.getElementById('btnBuild').addEventListener('click', buildGrid);
+</span></span><span id="line215"><span>
+</span></span><span id="line216"><span>// --- Edit Mode (full) ---
+</span></span><span id="line217"><span>toggleEdit.addEventListener('click', ()=&gt;{ editPanel.style.display = editPanel.style.display==='none' ? 'block' : 'none'; if(editPanel.style.display==='block') renderEdit(); });
+</span></span><span id="line218"><span>doneEdit.addEventListener('click', ()=&gt;{ editPanel.style.display='none'; saveAll(); refreshSystemSelect(); if(systemSel.value&amp;&amp;monthSel.value) buildGrid(); });
+</span></span><span id="line219"><span>function renderEdit(){
+</span></span><span id="line220"><span>  // systems
+</span></span><span id="line221"><span>  sysList.innerHTML=''; CONFIG.systems.forEach((s,i)=&gt;{
+</span></span><span id="line222"><span>    const li=document.createElement('li');
+</span></span><span id="line223"><span>    li.style.display='flex'; li.style.gap='6px'; li.style.alignItems='center'; li.style.marginBottom='6px';
+</span></span><span id="line224"><span>    li.innerHTML = `</span><span>&lt;i</span><span>nput value="${s}" data-i="${i}" class="sysName" style="flex:1;padding:8px;border-radius:8px;border:1px solid var(--border);background:#0e1221;color:#e8eaf6" /&gt;
+</span></span><span id="line225"><span>                    </span><span>&lt;b</span><span>utton data-i="${i}" class="delSys danger" style="width:auto"&gt;Delete</span><span>&lt;/<span></span>b</span><span>utton&gt;`;
+</span></span><span id="line226"><span>    sysList.appendChild(li);
+</span></span><span id="line227"><span>  });
+</span></span><span id="line228"><span>  const sys = systemSel.value || CONFIG.systems[0];
+</span></span><span id="line229"><span>  const cfg = CONFIG.bySystem[sys] || {points:["Point 1"], fields:["Value"]};
+</span></span><span id="line230"><span>  // points
+</span></span><span id="line231"><span>  pointList.innerHTML=''; cfg.points.forEach((p,i)=&gt;{
+</span></span><span id="line232"><span>    const li=document.createElement('li');
+</span></span><span id="line233"><span>    li.style.display='flex'; li.style.gap='6px'; li.style.alignItems='center'; li.style.marginBottom='6px';
+</span></span><span id="line234"><span>    li.innerHTML = `</span><span>&lt;i</span><span>nput value="${p}" data-i="${i}" class="ptName" style="flex:1;padding:8px;border-radius:8px;border:1px solid var(--border);background:#0e1221;color:#e8eaf6" /&gt;
+</span></span><span id="line235"><span>                    </span><span>&lt;b</span><span>utton data-i="${i}" class="delPoint danger" style="width:auto"&gt;Delete</span><span>&lt;/<span></span>b</span><span>utton&gt;`;
+</span></span><span id="line236"><span>    pointList.appendChild(li);
+</span></span><span id="line237"><span>  });
+</span></span><span id="line238"><span>  // fields
+</span></span><span id="line239"><span>  fieldList.innerHTML=''; cfg.fields.forEach((f,i)=&gt;{
+</span></span><span id="line240"><span>    const li=document.createElement('li');
+</span></span><span id="line241"><span>    li.style.display='flex'; li.style.gap='6px'; li.style.alignItems='center'; li.style.marginBottom='6px';
+</span></span><span id="line242"><span>    li.innerHTML = `</span><span>&lt;i</span><span>nput value="${f}" data-i="${i}" class="fdName" style="flex:1;padding:8px;border-radius:8px;border:1px solid var(--border);background:#0e1221;color:#e8eaf6" /&gt;
+</span></span><span id="line243"><span>                    </span><span>&lt;b</span><span>utton data-i="${i}" class="delField danger" style="width:auto"&gt;Delete</span><span>&lt;/<span></span>b</span><span>utton&gt;`;
+</span></span><span id="line244"><span>    fieldList.appendChild(li);
+</span></span><span id="line245"><span>  });
+</span></span><span id="line246"><span>}
+</span></span><span id="line247"><span>addSystem.addEventListener('click', ()=&gt;{
+</span></span><span id="line248"><span>  const name=newSystem.value.trim(); if(!name) return;
+</span></span><span id="line249"><span>  if(!CONFIG.systems.includes(name)){
+</span></span><span id="line250"><span>    CONFIG.systems.push(name); CONFIG.bySystem[name]={points:["Point 1"], fields:["Value"]};
+</span></span><span id="line251"><span>    newSystem.value=''; saveAll(); refreshSystemSelect(); renderEdit();
+</span></span><span id="line252"><span>  }
+</span></span><span id="line253"><span>});
+</span></span><span id="line254"><span>sysList.addEventListener('click', (ev)=&gt;{
+</span></span><span id="line255"><span>  const btn=ev.target.closest('button.delSys'); if(!btn) return;
+</span></span><span id="line256"><span>  const i=+btn.dataset.i; const name=CONFIG.systems[i];
+</span></span><span id="line257"><span>  if(confirm(`Delete system "${name}"?`)){
+</span></span><span id="line258"><span>    CONFIG.systems.splice(i,1); delete CONFIG.bySystem[name];
+</span></span><span id="line259"><span>    saveAll(); refreshSystemSelect(); renderEdit();
+</span></span><span id="line260"><span>  }
+</span></span><span id="line261"><span>});
+</span></span><span id="line262"><span>sysList.addEventListener('input', (ev)=&gt;{
+</span></span><span id="line263"><span>  const ip=ev.target.closest('input.sysName'); if(!ip) return;
+</span></span><span id="line264"><span>  const i=+ip.dataset.i; const old=CONFIG.systems[i]; const neo=ip.value.trim();
+</span></span><span id="line265"><span>  if(neo &amp;&amp; neo!==old){
+</span></span><span id="line266"><span>    CONFIG.systems[i]=neo; CONFIG.bySystem[neo]=CONFIG.bySystem[old]||{points:["Point 1"], fields:["Value"]};
+</span></span><span id="line267"><span>    delete CONFIG.bySystem[old]; if(DB[old]){ DB[neo]=DB[old]; delete DB[old]; }
+</span></span><span id="line268"><span>    saveAll(); refreshSystemSelect();
+</span></span><span id="line269"><span>  }
+</span></span><span id="line270"><span>});
+</span></span><span id="line271"><span>addPoint.addEventListener('click', ()=&gt;{
+</span></span><span id="line272"><span>  const sys=systemSel.value||CONFIG.systems[0]; const name=newPoint.value.trim(); if(!name) return;
+</span></span><span id="line273"><span>  CONFIG.bySystem[sys]=CONFIG.bySystem[sys]||{points:[],fields:[]};
+</span></span><span id="line274"><span>  CONFIG.bySystem[sys].points.push(name);
+</span></span><span id="line275"><span>  newPoint.value=''; saveAll(); renderEdit(); if(systemSel.value&amp;&amp;monthSel.value) buildGrid();
+</span></span><span id="line276"><span>});
+</span></span><span id="line277"><span>pointList.addEventListener('click', (ev)=&gt;{
+</span></span><span id="line278"><span>  const btn=ev.target.closest('button.delPoint'); if(!btn) return;
+</span></span><span id="line279"><span>  const sys=systemSel.value||CONFIG.systems[0]; const idx=+btn.dataset.i;
+</span></span><span id="line280"><span>  const arr=CONFIG.bySystem[sys].points; const name=arr[idx];
+</span></span><span id="line281"><span>  if(confirm(`Delete point "${name}"?`)){
+</span></span><span id="line282"><span>    arr.splice(idx,1); saveAll(); renderEdit(); if(systemSel.value&amp;&amp;monthSel.value) buildGrid();
+</span></span><span id="line283"><span>  }
+</span></span><span id="line284"><span>});
+</span></span><span id="line285"><span>pointList.addEventListener('input', (ev)=&gt;{
+</span></span><span id="line286"><span>  const ip=ev.target.closest('input.ptName'); if(!ip) return;
+</span></span><span id="line287"><span>  const sys=systemSel.value||CONFIG.systems[0]; const idx=+ip.dataset.i;
+</span></span><span id="line288"><span>  CONFIG.bySystem[sys].points[idx]=ip.value; saveAll(); if(systemSel.value&amp;&amp;monthSel.value) buildGrid();
+</span></span><span id="line289"><span>});
+</span></span><span id="line290"><span>addField.addEventListener('click', ()=&gt;{
+</span></span><span id="line291"><span>  const sys=systemSel.value||CONFIG.systems[0]; const name=newField.value.trim(); if(!name) return;
+</span></span><span id="line292"><span>  CONFIG.bySystem[sys]=CONFIG.bySystem[sys]||{points:[],fields:[]};
+</span></span><span id="line293"><span>  CONFIG.bySystem[sys].fields.push(name);
+</span></span><span id="line294"><span>  newField.value=''; saveAll(); renderEdit(); if(systemSel.value&amp;&amp;monthSel.value) buildGrid();
+</span></span><span id="line295"><span>});
+</span></span><span id="line296"><span>fieldList.addEventListener('click', (ev)=&gt;{
+</span></span><span id="line297"><span>  const btn=ev.target.closest('button.delField'); if(!btn) return;
+</span></span><span id="line298"><span>  const sys=systemSel.value||CONFIG.systems[0]; const idx=+btn.dataset.i;
+</span></span><span id="line299"><span>  const arr=CONFIG.bySystem[sys].fields; const name=arr[idx];
+</span></span><span id="line300"><span>  if(confirm(`Delete field "${name}"?`)){
+</span></span><span id="line301"><span>    arr.splice(idx,1); saveAll(); renderEdit(); if(systemSel.value&amp;&amp;monthSel.value) buildGrid();
+</span></span><span id="line302"><span>  }
+</span></span><span id="line303"><span>});
+</span></span><span id="line304"><span>fieldList.addEventListener('input', (ev)=&gt;{
+</span></span><span id="line305"><span>  const ip=ev.target.closest('input.fdName'); if(!ip) return;
+</span></span><span id="line306"><span>  const sys=systemSel.value||CONFIG.systems[0]; const idx=+ip.dataset.i;
+</span></span><span id="line307"><span>  CONFIG.bySystem[sys].fields[idx]=ip.value; saveAll(); if(systemSel.value&amp;&amp;monthSel.value) buildGrid();
+</span></span><span id="line308"><span>});
+</span></span><span id="line309"><span>
+</span></span><span id="line310"><span>// --- Export / Import / Print ---
+</span></span><span id="line311"><span>btnExportJSON.addEventListener('click', ()=&gt;{
+</span></span><span id="line312"><span>  const blob = new Blob([JSON.stringify({CONFIG, DB}, null, 2)], {type:'application/json'});
+</span></span><span id="line313"><span>  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+</span></span><span id="line314"><span>  a.download = 'daily_test_log_backup.json'; a.click(); URL.revokeObjectURL(a.href);
+</span></span><span id="line315"><span>});
+</span></span><span id="line316"><span>btnExportCSV.addEventListener('click', ()=&gt;{
+</span></span><span id="line317"><span>  const sys=systemSel.value, ym=monthSel.value; if(!sys||!ym){ alert('Choose system &amp; month'); return; }
+</span></span><span id="line318"><span>  const {points,fields}=(CONFIG.bySystem[sys]||{points:[],fields:[]});
+</span></span><span id="line319"><span>  const days=new Date(+ym.slice(0,4),+ym.slice(5,7),0).getDate();
+</span></span><span id="line320"><span>  const headers=['Date']; points.forEach(p=&gt;fields.forEach(f=&gt;headers.push(`${p} — ${f}`)));
+</span></span><span id="line321"><span>  const lines=[headers.join(',')];
+</span></span><span id="line322"><span>  for(let d=1; d</span><span>&lt;=</span><span>days; d++){
+</span></span><span id="line323"><span>    const ds=String(d).padStart(2,'0'); const dateStr=`${ym}-${ds}`;
+</span></span><span id="line324"><span>    const row=(DB[sys]&amp;&amp;DB[sys][ym]&amp;&amp;DB[sys][ym][ds])||{};
+</span></span><span id="line325"><span>    const cells=[dateStr];
+</span></span><span id="line326"><span>    points.forEach(pt=&gt;fields.forEach(fd=&gt;{
+</span></span><span id="line327"><span>      const v=(row[pt]&amp;&amp;row[pt][fd]!=null)?String(row[pt][fd]):'';
+</span></span><span id="line328"><span>      cells.push(/[" ,\n]/.test(v)?`"${v.replace(/"/g,'""')}"`:v);
+</span></span><span id="line329"><span>    }));
+</span></span><span id="line330"><span>    lines.push(cells.join(','));
+</span></span><span id="line331"><span>  }
+</span></span><span id="line332"><span>  const blob=new Blob([lines.join('\n')],{type:'text/csv'});
+</span></span><span id="line333"><span>  const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+</span></span><span id="line334"><span>  a.download=`${sys} ${ym}.csv`; a.click(); URL.revokeObjectURL(a.href);
+</span></span><span id="line335"><span>});
+</span></span><span id="line336"><span>btnPrint.addEventListener('click', ()=&gt; window.print());
+</span></span><span id="line337"><span>importFile.addEventListener('change', async(ev)=&gt;{
+</span></span><span id="line338"><span>  const f=ev.target.files[0]; if(!f) return;
+</span></span><span id="line339"><span>  const text=await f.text();
+</span></span><span id="line340"><span>  try{
+</span></span><span id="line341"><span>    const obj=JSON.parse(text);
+</span></span><span id="line342"><span>    if(obj.CONFIG&amp;&amp;obj.DB){ CONFIG=obj.CONFIG; DB=obj.DB; saveAll(); refreshSystemSelect(); if(systemSel.value&amp;&amp;monthSel.value) buildGrid(); }
+</span></span><span id="line343"><span>    else throw new Error('Expected JSON with {CONFIG, DB}');
+</span></span><span id="line344"><span>  }catch(e){ alert('Import failed: '+e.message); }
+</span></span><span id="line345"><span>  finally{ importFile.value=''; }
+</span></span><span id="line346"><span>});
+</span></span><span id="line347"><span>
+</span></span><span id="line348"><span>// --- Init ---
+</span></span><span id="line349"><span>(function init(){
+</span></span><span id="line350"><span>  refreshSystemSelect();
+</span></span><span id="line351"><span>  const now=new Date(); monthSel.value = now.toISOString().slice(0,7);
+</span></span><span id="line352"><span>})();
+</span></span><span id="line353"><span></span><span>&lt;/<span class="end-tag">script</span>&gt;</span><span>
+</span></span><span id="line354"><span></span><span>&lt;/<span class="end-tag">body</span>&gt;</span><span>
+</span></span><span id="line355"><span></span><span>&lt;/<span class="end-tag">html</span>&gt;</span><span>
+</span></span><span id="line356"><span></span></span></body></html>
