@@ -37,6 +37,7 @@
   .toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:end}
   .toolbar > div{flex:1;min-width:160px}
   .danger{border-color:var(--danger); color:#ffd7d7}
+  .hint{font-size:12px;color:#ffd28a}
   @media print{
     body{background:#fff;color:#000}
     header,.no-print{display:none!important}
@@ -63,6 +64,9 @@
           <select id="systemSel">
             <option value="" disabled selected>-- Select System --</option>
           </select>
+          <div id="sysEmptyHint" class="hint" style="display:none;margin-top:6px">
+            No systems yet. Click <b>Edit Systems</b> below to add one.
+          </div>
         </div>
         <div>
           <label for="monthSel">Month</label>
@@ -121,8 +125,8 @@
 
 <script>
 if ('serviceWorker' in navigator) { window.addEventListener('load', () => { navigator.serviceWorker.register('./sw.js').catch(console.error); }); }
+// Month fallback
 (function ensureMonthInput(){ const ip=document.getElementById('monthSel'); const t=document.createElement('input'); t.setAttribute('type','month'); if(t.type!=='month'){ ip.setAttribute('type','text'); ip.setAttribute('placeholder','YYYY-MM'); }})();
-
 function storageAvailable(type){try{var s=window[type],x='__t__';s.setItem(x,x);s.removeItem(x);return true;}catch(e){return false;}}
 const HAS_LS = storageAvailable('localStorage');
 document.getElementById('warn').textContent = HAS_LS ? '' : 'Private mode may limit saving.';
@@ -143,8 +147,14 @@ const SEED = {
     "Condensate 2":{points:["Sample"], fields:["Conductivity","Sulfite","Posca"]}
   }
 };
-let CONFIG = JSON.parse(JSON.stringify(SEED)); let DB = {};
+let CONFIG = null; let DB = {};
 try{ const c=localStorage.getItem(CONFIG_KEY); if(c) CONFIG=JSON.parse(c); const d=localStorage.getItem(DATA_KEY); if(d) DB=JSON.parse(d);}catch(e){}
+// Hard validate config and auto-reseed if broken/empty
+function isValidConfig(cfg){
+  return cfg && Array.isArray(cfg.systems) && cfg.systems.length>0 && cfg.bySystem && typeof cfg.bySystem==='object';
+}
+if(!isValidConfig(CONFIG)){ CONFIG = JSON.parse(JSON.stringify(SEED)); try{ localStorage.setItem(CONFIG_KEY, JSON.stringify(CONFIG)); }catch(e){} }
+
 function saveAll(){ try{ localStorage.setItem(CONFIG_KEY, JSON.stringify(CONFIG)); localStorage.setItem(DATA_KEY, JSON.stringify(DB)); }catch(e){} }
 
 const systemSel=document.getElementById('systemSel'); const monthSel=document.getElementById('monthSel');
@@ -156,8 +166,16 @@ const newSystem=document.getElementById('newSystem'); const addSystem=document.g
 const newPoint=document.getElementById('newPoint'); const addPoint=document.getElementById('addPoint');
 const newField=document.getElementById('newField'); const addField=document.getElementById('addField');
 const btnExportJSON=document.getElementById('btnExportJSON'); const btnExportCSV=document.getElementById('btnExportCSV'); const btnExportXLS=document.getElementById('btnExportXLS'); const btnExportPDF=document.getElementById('btnExportPDF'); const btnPrint=document.getElementById('btnPrint'); const importFile=document.getElementById('importFile');
+const sysEmptyHint=document.getElementById('sysEmptyHint');
 
-function refreshSystemSelect(){ const opts = ['<option value="" disabled selected>-- Select System --</option>'].concat(CONFIG.systems.map(s=>`<option>${s}</option>`)); systemSel.innerHTML = opts.join(''); }
+function refreshSystemSelect(){
+  const has = CONFIG.systems && CONFIG.systems.length>0;
+  if(!has){ systemSel.innerHTML = '<option value="" disabled selected>-- No systems --</option>'; sysEmptyHint.style.display='block'; }
+  else{
+    const opts = ['<option value="" disabled selected>-- Select System --</option>'].concat(CONFIG.systems.map(s=>`<option>${s}</option>`));
+    systemSel.innerHTML = opts.join(''); sysEmptyHint.style.display='none';
+  }
+}
 function status(msg){ statusEl.textContent=msg; setTimeout(()=>statusEl.textContent='',1200); }
 
 function buildGrid(){
@@ -169,9 +187,13 @@ function buildGrid(){
   const days = new Date(+ym.slice(0,4), +ym.slice(5,7), 0).getDate();
   DB[sys]=DB[sys]||{}; DB[sys][ym]=DB[sys][ym]||{};
   gridTitle.textContent = `${sys} — ${ym}`;
-  let html = '<thead><tr><th class="sticky-col day-col">Day</th>'; points.forEach(p=> html += `<th class="group" colspan="${fields.length}">${p}</th>`);
-  html += '</tr><tr><th class="sticky-col day-col">Date</th>'; points.forEach(p=> fields.forEach(f=> html += `<th>${f}</th>`)); html += '</tr></thead><tbody>';
-  for(let d=1; d<=days; d++){ const ds=String(d).padStart(2,'0'); const dateStr=`${ym}-${ds}`; const row=DB[sys][ym][ds]||{};
+  let html = '<thead><tr><th class="sticky-col day-col">Day</th>';
+  points.forEach(p=> html += `<th class="group" colspan="${fields.length}">${p}</th>`);
+  html += '</tr><tr><th class="sticky-col day-col">Date</th>';
+  points.forEach(p=> fields.forEach(f=> html += `<th>${f}</th>`));
+  html += '</tr></thead><tbody>';
+  for(let d=1; d<=days; d++){
+    const ds=String(d).padStart(2,'0'); const dateStr=`${ym}-${ds}`; const row=DB[sys][ym][ds]||{};
     html += `<tr data-day="${ds}"><th class="sticky-col day-col">${dateStr}</th>`;
     points.forEach(pt=>{ const obj=row[pt]||{}; fields.forEach(fd=>{ const val=obj[fd] ?? ''; html += `<td class="cell" contenteditable="true" data-point="${pt}" data-field="${fd}">${val}</td>`; }); });
     html += '</tr>';
@@ -187,33 +209,111 @@ document.getElementById('btnBuild').addEventListener('click', buildGrid);
 // Edit isolation
 let activeSysForEdit = null;
 function renderEdit(){
-  activeSysForEdit = systemSel.value || CONFIG.systems[0];
-  editNameEl.textContent = activeSysForEdit || '(none)';
-  sysList.innerHTML='';
-  CONFIG.systems.forEach((s,i)=>{ const li=document.createElement('li'); li.style.display='flex'; li.style.gap='6px'; li.style.alignItems='center'; li.style.marginBottom='6px';
-    li.innerHTML = `<input value="${s}" data-i="${i}" class="sysName" style="flex:1;padding:8px;border-radius:8px;border:1px solid var(--border);background:#0e1221;color:#e8eaf6" />
-                    <button data-i="${i}" class="delSys danger" style="width:auto">Delete</button>`; sysList.appendChild(li); });
-  const cfg = CONFIG.bySystem[activeSysForEdit] || {points:["Point 1"], fields:["Value"]};
-  pointList.innerHTML=''; cfg.points.forEach((p,i)=>{ const li=document.createElement('li'); li.style.display='flex'; li.style.gap='6px'; li.style.alignItems='center'; li.style.marginBottom='6px';
-    li.innerHTML = `<input value="${p}" data-i="${i}" class="ptName" style="flex:1;padding:8px;border-radius:8px;border:1px solid var(--border);background:#0e1221;color:#e8eaf6" />
-                    <button data-i="${i}" class="delPoint danger" style="width:auto">Delete</button>`; pointList.appendChild(li); });
-  fieldList.innerHTML=''; cfg.fields.forEach((f,i)=>{ const li=document.createElement('li'); li.style.display='flex'; li.style.gap='6px'; li.style.alignItems='center'; li.style.marginBottom='6px';
-    li.innerHTML = `<input value="${f}" data-i="${i}" class="fdName" style="flex:1;padding:8px;border-radius:8px;border:1px solid var(--border);background:#0e1221;color:#e8eaf6" />
-                    <button data-i="${i}" class="delField danger" style="width:auto">Delete</button>`; fieldList.appendChild(li); });
-}
-toggleEdit.addEventListener('click', ()=>{ editPanel.style.display = editPanel.style.display==='none' ? 'block' : 'none'; if(editPanel.style.display==='block') renderEdit(); });
-doneEdit.addEventListener('click', ()=>{ editPanel.style.display='none'; saveAll(); refreshSystemSelect(); if(systemSel.value&&monthSel.value) buildGrid(); });
-addSystem.addEventListener('click', ()=>{ const name=newSystem.value.trim(); if(!name) return; if(!CONFIG.systems.includes(name)){ CONFIG.systems.push(name); CONFIG.bySystem[name]={points:["Point 1"], fields:["Value"]}; newSystem.value=''; saveAll(); refreshSystemSelect(); renderEdit(); }});
-sysList.addEventListener('click', (ev)=>{ const btn=ev.target.closest('button.delSys'); if(!btn) return; const i=+btn.dataset.i; const name=CONFIG.systems[i]; if(confirm(`Delete system "${name}"?`)){ CONFIG.systems.splice(i,1); delete CONFIG.bySystem[name]; if(activeSysForEdit===name){ activeSysForEdit=CONFIG.systems[0]||null; } saveAll(); refreshSystemSelect(); renderEdit(); }});
-sysList.addEventListener('input', (ev)=>{ const ip=ev.target.closest('input.sysName'); if(!ip) return; const i=+ip.dataset.i; const old=CONFIG.systems[i]; const neo=ip.value.trim(); if(neo && neo!==old){ CONFIG.systems[i]=neo; CONFIG.bySystem[neo]=CONFIG.bySystem[old]||{points:["Point 1"], fields:["Value"]}; delete CONFIG.bySystem[old]; if(DB[old]){ DB[neo]=DB[old]; delete DB[old]; } if(activeSysForEdit===old){ activeSysForEdit=neo; } saveAll(); refreshSystemSelect(); }});
-addPoint.addEventListener('click', ()=>{ if(!activeSysForEdit) return; const name=newPoint.value.trim(); if(!name) return; CONFIG.bySystem[activeSysForEdit]=CONFIG.bySystem[activeSysForEdit]||{points:[],fields:[]}; CONFIG.bySystem[activeSysForEdit].points.push(name); newPoint.value=''; saveAll(); renderEdit(); if(systemSel.value===activeSysForEdit && monthSel.value) buildGrid(); });
-pointList.addEventListener('click', (ev)=>{ const btn=ev.target.closest('button.delPoint'); if(!btn) return; const idx=+btn.dataset.i; const arr=CONFIG.bySystem[activeSysForEdit].points; const name=arr[idx]; if(confirm(`Delete point "${name}"?`)){ arr.splice(idx,1); saveAll(); renderEdit(); if(systemSel.value===activeSysForEdit && monthSel.value) buildGrid(); }});
-pointList.addEventListener('input', (ev)=>{ const ip=ev.target.closest('input.ptName'); if(!ip) return; const idx=+ip.dataset.i; CONFIG.bySystem[activeSysForEdit].points[idx]=ip.value; saveAll(); if(systemSel.value===activeSysForEdit && monthSel.value) buildGrid(); });
-addField.addEventListener('click', ()=>{ if(!activeSysForEdit) return; const name=newField.value.trim(); if(!name) return; CONFIG.bySystem[activeSysForEdit]=CONFIG.bySystem[activeSysForEdit]||{points:[],fields:[]}; CONFIG.bySystem[activeSysForEdit].fields.push(name); newField.value=''; saveAll(); renderEdit(); if(systemSel.value===activeSysForEdit && monthSel.value) buildGrid(); });
-fieldList.addEventListener('click', (ev)=>{ const btn=ev.target.closest('button.delField'); if(!btn) return; const idx=+btn.dataset.i; const arr=CONFIG.bySystem[activeSysForEdit].fields; const name=arr[idx]; if(confirm(`Delete field "${name}"?`)){ arr.splice(idx,1); saveAll(); renderEdit(); if(systemSel.value===activeSysForEdit && monthSel.value) buildGrid(); }});
-fieldList.addEventListener('input', (ev)=>{ const ip=ev.target.closest('input.fdName'); if(!ip) return; const idx=+ip.dataset.i; CONFIG.bySystem[activeSysForEdit].fields[idx]=ip.value; saveAll(); if(systemSel.value===activeSysForEdit && monthSel.value) buildGrid(); });
+  // If no systems, encourage adding one and set active accordingly
+  if(!CONFIG.systems || CONFIG.systems.length===0){ activeSysForEdit = null; editNameEl.textContent = '(none)'; }
+  else { activeSysForEdit = systemSel.value || CONFIG.systems[0]; editNameEl.textContent = activeSysForEdit; }
 
-// Export JSON/CSV
+  sysList.innerHTML='';
+  (CONFIG.systems||[]).forEach((s,i)=>{
+    const li=document.createElement('li');
+    li.style.display='flex'; li.style.gap='6px'; li.style.alignItems='center'; li.style.marginBottom='6px';
+    li.innerHTML = `<input value="${s}" data-i="${i}" class="sysName" style="flex:1;padding:8px;border-radius:8px;border:1px solid var(--border);background:#0e1221;color:#e8eaf6" />
+                    <button data-i="${i}" class="delSys danger" style="width:auto">Delete</button>`;
+    sysList.appendChild(li);
+  });
+
+  const cfg = activeSysForEdit ? (CONFIG.bySystem[activeSysForEdit] || {points:["Point 1"], fields:["Value"]}) : {points:[],fields:[]};
+  pointList.innerHTML='';
+  cfg.points.forEach((p,i)=>{
+    const li=document.createElement('li');
+    li.style.display='flex'; li.style.gap='6px'; li.style.alignItems='center'; li.style.marginBottom='6px';
+    li.innerHTML = `<input value="${p}" data-i="${i}" class="ptName" style="flex:1;padding:8px;border-radius:8px;border:1px solid var(--border);background:#0e1221;color:#e8eaf6" />
+                    <button data-i="${i}" class="delPoint danger" style="width:auto">Delete</button>`;
+    pointList.appendChild(li);
+  });
+  fieldList.innerHTML='';
+  cfg.fields.forEach((f,i)=>{
+    const li=document.createElement('li');
+    li.style.display='flex'; li.style.gap='6px'; li.style.alignItems='center'; li.style.marginBottom='6px';
+    li.innerHTML = `<input value="${f}" data-i="${i}" class="fdName" style="flex:1;padding:8px;border-radius:8px;border:1px solid var(--border);background:#0e1221;color:#e8eaf6" />
+                    <button data-i="${i}" class="delField danger" style="width:auto">Delete</button>`;
+    fieldList.appendChild(li);
+  });
+}
+document.getElementById('toggleEdit').addEventListener('click', ()=>{
+  editPanel.style.display = editPanel.style.display==='none' ? 'block' : 'none';
+  if(editPanel.style.display==='block') renderEdit();
+});
+doneEdit.addEventListener('click', ()=>{
+  editPanel.style.display='none'; saveAll(); refreshSystemSelect(); if(systemSel.value&&monthSel.value) buildGrid();
+});
+addSystem.addEventListener('click', ()=>{
+  const name=newSystem.value.trim(); if(!name) return;
+  if(!CONFIG.systems) CONFIG.systems=[];
+  if(!CONFIG.bySystem) CONFIG.bySystem={};
+  if(!CONFIG.systems.includes(name)){
+    CONFIG.systems.push(name); CONFIG.bySystem[name]={points:["Point 1"], fields:["Value"]};
+    newSystem.value=''; saveAll(); refreshSystemSelect(); renderEdit();
+  }
+});
+sysList.addEventListener('click', (ev)=>{
+  const btn=ev.target.closest('button.delSys'); if(!btn) return;
+  const i=+btn.dataset.i; const name=CONFIG.systems[i];
+  if(confirm(`Delete system "${name}"?`)){
+    CONFIG.systems.splice(i,1); delete CONFIG.bySystem[name];
+    if(activeSysForEdit===name){ activeSysForEdit=CONFIG.systems[0]||null; }
+    saveAll(); refreshSystemSelect(); renderEdit();
+  }
+});
+sysList.addEventListener('input', (ev)=>{
+  const ip=ev.target.closest('input.sysName'); if(!ip) return;
+  const i=+ip.dataset.i; const old=CONFIG.systems[i]; const neo=ip.value.trim();
+  if(neo && neo!==old){
+    CONFIG.systems[i]=neo; CONFIG.bySystem[neo]=CONFIG.bySystem[old]||{points:["Point 1"], fields:["Value"]};
+    delete CONFIG.bySystem[old]; if(DB[old]){ DB[neo]=DB[old]; delete DB[old]; }
+    if(activeSysForEdit===old){ activeSysForEdit=neo; }
+    saveAll(); refreshSystemSelect();
+  }
+});
+addPoint.addEventListener('click', ()=>{
+  if(!activeSysForEdit){ alert('Add/select a system first.'); return; }
+  const name=newPoint.value.trim(); if(!name) return;
+  CONFIG.bySystem[activeSysForEdit]=CONFIG.bySystem[activeSysForEdit]||{points:[],fields:[]};
+  CONFIG.bySystem[activeSysForEdit].points.push(name);
+  newPoint.value=''; saveAll(); renderEdit(); if(systemSel.value===activeSysForEdit && monthSel.value) buildGrid();
+});
+pointList.addEventListener('click', (ev)=>{
+  const btn=ev.target.closest('button.delPoint'); if(!btn) return;
+  const idx=+btn.dataset.i; const arr=CONFIG.bySystem[activeSysForEdit].points; const name=arr[idx];
+  if(confirm(`Delete point "${name}"?`)){
+    arr.splice(idx,1); saveAll(); renderEdit(); if(systemSel.value===activeSysForEdit && monthSel.value) buildGrid();
+  }
+});
+pointList.addEventListener('input', (ev)=>{
+  const ip=ev.target.closest('input.ptName'); if(!ip) return;
+  const idx=+ip.dataset.i; CONFIG.bySystem[activeSysForEdit].points[idx]=ip.value; saveAll(); if(systemSel.value===activeSysForEdit && monthSel.value) buildGrid();
+});
+addField.addEventListener('click', ()=>{
+  if(!activeSysForEdit){ alert('Add/select a system first.'); return; }
+  const name=newField.value.trim(); if(!name) return;
+  CONFIG.bySystem[activeSysForEdit]=CONFIG.bySystem[activeSysForEdit]||{points:[],fields:[]};
+  CONFIG.bySystem[activeSysForEdit].fields.push(name);
+  newField.value=''; saveAll(); renderEdit(); if(systemSel.value===activeSysForEdit && monthSel.value) buildGrid();
+});
+fieldList.addEventListener('click', (ev)=>{
+  const btn=ev.target.closest('button.delField'); if(!btn) return;
+  const idx=+btn.dataset.i; const arr=CONFIG.bySystem[activeSysForEdit].fields; const name=arr[idx];
+  if(confirm(`Delete field "${name}"?`)){
+    arr.splice(idx,1); saveAll(); renderEdit(); if(systemSel.value===activeSysForEdit && monthSel.value) buildGrid();
+  }
+});
+fieldList.addEventListener('input', (ev)=>{
+  const ip=ev.target.closest('input.fdName'); if(!ip) return;
+  const idx=+ip.dataset.i; CONFIG.bySystem[activeSysForEdit].fields[idx]=ip.value; saveAll(); if(systemSel.value===activeSysForEdit && monthSel.value) buildGrid();
+});
+
+// Export JSON/CSV/Excel/PDF/Print
+const btnExportJSON=document.getElementById('btnExportJSON'); const btnExportCSV=document.getElementById('btnExportCSV'); const btnExportXLS=document.getElementById('btnExportXLS'); const btnExportPDF=document.getElementById('btnExportPDF'); const btnPrint=document.getElementById('btnPrint'); const importFile=document.getElementById('importFile');
 btnExportJSON.addEventListener('click', ()=>{ const blob=new Blob([JSON.stringify({CONFIG,DB},null,2)],{type:'application/json'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='daily_test_log_backup.json'; a.click(); URL.revokeObjectURL(a.href); });
 btnExportCSV.addEventListener('click', ()=>{
   const sys=systemSel.value, ym=monthSel.value; if(!sys||!ym){ alert('Choose system & month'); return; }
@@ -222,10 +322,8 @@ btnExportCSV.addEventListener('click', ()=>{
   for(let d=1; d<=days; d++){ const ds=String(d).padStart(2,'0'); const dateStr=`${ym}-${ds}`; const row=(DB[sys]&&DB[sys][ym]&&DB[sys][ym][ds])||{}; const cells=[dateStr];
     points.forEach(pt=>fields.forEach(fd=>{ const v=(row[pt]&&row[pt][fd]!=null)?String(row[pt][fd]):''; cells.push(/[" ,
 ]/.test(v)?`"${v.replace(/"/g,'""')}"`:v); })); lines.push(cells.join(',')); }
-  const blob=new Blob([lines.join('
-')],{type:'text/csv'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`${sys} ${ym}.csv`; a.click(); URL.revokeObjectURL(a.href);
+  const blob=new Blob([lines.join('\n')],{type:'text/csv'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`${sys} ${ym}.csv`; a.click(); URL.revokeObjectURL(a.href);
 });
-// Excel export (HTML workbook)
 btnExportXLS.addEventListener('click', ()=>{
   const sys=systemSel.value, ym=monthSel.value; if(!sys||!ym){ alert('Choose system & month'); return; }
   const {points,fields}=(CONFIG.bySystem[sys]||{points:[],fields:[]}); const days=new Date(+ym.slice(0,4),+ym.slice(5,7),0).getDate();
@@ -236,7 +334,6 @@ btnExportXLS.addEventListener('click', ()=>{
     html+=`<tr><td>${esc(dateStr)}</td>`; points.forEach(pt=>fields.forEach(fd=>{ const v=(row[pt]&&row[pt][fd]!=null)?String(row[pt][fd]):''; html+=`<td>${esc(v)}</td>`; })); html+='</tr>'; }
   html+='</table></body></html>'; const blob=new Blob([html],{type:'application/vnd.ms-excel'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`${sys} ${ym}.xls`; a.click(); URL.revokeObjectURL(a.href);
 });
-// PDF export (print window)
 btnExportPDF.addEventListener('click', ()=>{
   const sys=systemSel.value, ym=monthSel.value; if(!sys||!ym){ alert('Choose system & month'); return; }
   const {points,fields}=(CONFIG.bySystem[sys]||{points:[],fields:[]}); const days=new Date(+ym.slice(0,4),+ym.slice(5,7),0).getDate();
@@ -259,7 +356,16 @@ importFile.addEventListener('change', async(ev)=>{
   finally{ importFile.value=''; }
 });
 
-(function init(){ refreshSystemSelect(); const now=new Date(); monthSel.value = now.toISOString().slice(0,7); })();
+// Auto-open Edit if no systems (first-run UX)
+function ensureHasAtLeastOneSystem(){
+  if(CONFIG.systems && CONFIG.systems.length>0) return;
+  editPanel.style.display='block'; renderEdit();
+}
+(function init(){
+  refreshSystemSelect();
+  const now=new Date(); monthSel.value = now.toISOString().slice(0,7);
+  ensureHasAtLeastOneSystem();
+})();
 </script>
 </body>
 </html>
