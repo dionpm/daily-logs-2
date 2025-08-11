@@ -19,7 +19,8 @@
   .card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px}
   .card h2{font-size:16px;margin:0 0 8px}
   label{display:block;font-size:12px;color:var(--muted);margin:10px 0 6px}
-  input,select,button{width:100%;padding:10px;border-radius:10px;border:1px solid var(--border);background:#0e1221;color:#var(--ink)}
+  input,select,button{width:100%;padding:10px;border-radius:10px;border:1px solid var(--border);background:#0e1221;color:var(--ink)}
+  option{color:#000}
   .row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
   .actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
   .note{font-size:12px;color:var(--muted)}
@@ -57,9 +58,19 @@
     <section class="card">
       <h2>Setup</h2>
       <div class="toolbar">
-        <div><label for="systemSel">System</label><select id="systemSel"></select></div>
-        <div><label for="monthSel">Month</label><input type="month" id="monthSel" /></div>
-        <div><button id="btnBuild">Build Grid</button></div>
+        <div>
+          <label for="systemSel">System</label>
+          <select id="systemSel">
+            <option value="" disabled selected>-- Select System --</option>
+          </select>
+        </div>
+        <div>
+          <label for="monthSel">Month</label>
+          <input type="month" id="monthSel" />
+        </div>
+        <div>
+          <button id="btnBuild">Build Grid</button>
+        </div>
       </div>
 
       <hr style="border-color:var(--border);margin:12px 0" />
@@ -130,17 +141,31 @@ const SEED = {
 
 let CONFIG = SEED; let DB = {};
 try{ const c=localStorage.getItem(CONFIG_KEY); if(c) CONFIG=JSON.parse(c); const d=localStorage.getItem(DATA_KEY); if(d) DB=JSON.parse(d);}catch(e){}
+
 function saveAll(){ try{ localStorage.setItem(CONFIG_KEY, JSON.stringify(CONFIG)); localStorage.setItem(DATA_KEY, JSON.stringify(DB)); }catch(e){} }
 
 const systemSel=document.getElementById('systemSel'); const monthSel=document.getElementById('monthSel'); const grid=document.getElementById('grid'); const gridTitle=document.getElementById('gridTitle'); const statusEl=document.getElementById('status');
-function refreshSystemSelect(){ systemSel.innerHTML = CONFIG.systems.map(s=>`<option>${s}</option>`).join(''); }
+
+function refreshSystemSelect(){
+  const opts = ['<option value="" disabled selected>-- Select System --</option>']
+    .concat(CONFIG.systems.map(s=>`<option>${s}</option>`));
+  systemSel.innerHTML = opts.join('');
+}
+
 function buildGrid(){
-  const sys=systemSel.value, ym=monthSel.value; if(!sys||!ym){ alert('Select system and month'); return; }
-  const cfg = CONFIG.bySystem[sys] || {points:["Point 1"], fields:["Value"]}; const points=cfg.points, fields=cfg.fields;
-  const days = new Date(+ym.slice(0,4), +ym.slice(5,7), 0).getDate(); DB[sys]=DB[sys]||{}; DB[sys][ym]=DB[sys][ym]||{};
+  const sys=systemSel.value; const ym=monthSel.value;
+  if(!sys){ alert('Pick a system'); return; }
+  if(!ym){ alert('Pick a month'); return; }
+  const cfg = CONFIG.bySystem[sys] || {points:["Point 1"], fields:["Value"]};
+  const points=cfg.points, fields=cfg.fields;
+  const days = new Date(+ym.slice(0,4), +ym.slice(5,7), 0).getDate();
+  DB[sys]=DB[sys]||{}; DB[sys][ym]=DB[sys][ym]||{};
   gridTitle.textContent = `${sys} — ${ym}`;
-  let html = '<thead><tr><th class="sticky-col day-col">Day</th>'; points.forEach(p=> html += `<th class="group" colspan="${fields.length}">${p}</th>`); html += '</tr><tr><th class="sticky-col day-col">Date</th>';
-  points.forEach(p=> fields.forEach(f=> html += `<th>${f}</th>`)); html += '</tr></thead><tbody>';
+  let html = '<thead><tr><th class="sticky-col day-col">Day</th>';
+  points.forEach(p=> html += `<th class="group" colspan="${fields.length}">${p}</th>`);
+  html += '</tr><tr><th class="sticky-col day-col">Date</th>';
+  points.forEach(p=> fields.forEach(f=> html += `<th>${f}</th>`));
+  html += '</tr></thead><tbody>';
   for(let d=1; d<=days; d++){ const ds=String(d).padStart(2,'0'); const dateStr=`${ym}-${ds}`; const row=DB[sys][ym][ds]||{};
     html += `<tr data-day="${ds}"><th class="sticky-col day-col">${dateStr}</th>`;
     points.forEach(pt=>{ const obj=row[pt]||{}; fields.forEach(fd=>{ const val=obj[fd] ?? ''; html += `<td class="cell" contenteditable="true" data-point="${pt}" data-field="${fd}">${val}</td>`; }); });
@@ -148,60 +173,19 @@ function buildGrid(){
   }
   html += '</tbody>'; grid.innerHTML = html; grid.querySelectorAll('.cell').forEach(td=> td.addEventListener('blur', onCellEdit));
 }
+
 function onCellEdit(ev){
   const td=ev.currentTarget, sys=systemSel.value, ym=monthSel.value, day=td.closest('tr').getAttribute('data-day'), pt=td.getAttribute('data-point'), fd=td.getAttribute('data-field'), val=td.textContent.trim();
   DB[sys]=DB[sys]||{}; DB[sys][ym]=DB[sys][ym]||{}; DB[sys][ym][day]=DB[sys][ym][day]||{}; DB[sys][ym][day][pt]=DB[sys][ym][day][pt]||{}; DB[sys][ym][day][pt][fd]=val; saveAll(); statusEl.textContent='Saved'; setTimeout(()=>statusEl.textContent='',1000);
 }
 
-// Edit mode
-const toggleEdit=document.getElementById('toggleEdit'), editPanel=document.getElementById('editPanel');
-const sysList=document.getElementById('sysList'), pointList=document.getElementById('pointList'), fieldList=document.getElementById('fieldList');
-const newSystem=document.getElementById('newSystem'), newPoint=document.getElementById('newPoint'), newField=document.getElementById('newField');
 document.getElementById('btnBuild').addEventListener('click', buildGrid);
-document.getElementById('btnExportJSON').addEventListener('click', ()=>{ const blob=new Blob([JSON.stringify({CONFIG,DB},null,2)],{type:'application/json'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='daily_test_log_backup.json'; a.click(); URL.revokeObjectURL(a.href); });
-document.getElementById('btnExportCSV').addEventListener('click', ()=>{
-  const sys=systemSel.value, ym=document.getElementById('monthSel').value; if(!sys||!ym){ alert('Choose system & month'); return; }
-  const {points,fields}=(CONFIG.bySystem[sys]||{points:[],fields:[]}); const days=new Date(+ym.slice(0,4),+ym.slice(5,7),0).getDate();
-  const headers=['Date']; points.forEach(p=>fields.forEach(f=>headers.push(`${p} — ${f}`))); const lines=[headers.join(',')];
-  for(let d=1; d<=days; d++){ const ds=String(d).padStart(2,'0'); const dateStr=`${ym}-${ds}`; const row=(DB[sys]&&DB[sys][ym]&&DB[sys][ym][ds])||{}; const cells=[dateStr];
-    points.forEach(pt=>fields.forEach(fd=>{ const v=(row[pt]&&row[pt][fd]!=null)?String(row[pt][fd]):''; cells.push(/[" ,
-]/.test(v)?`"${v.replace(/"/g,'""')}"`:v); })); lines.push(cells.join(',')); }
-  const blob=new Blob([lines.join('\n')],{type:'text/csv'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`${sys} ${ym}.csv`; a.click(); URL.revokeObjectURL(a.href);
-});
-document.getElementById('btnPrint').addEventListener('click', ()=>window.print());
-document.getElementById('toggleEdit').addEventListener('click', ()=>{ editPanel.style.display = editPanel.style.display==='none' ? 'block' : 'none'; if(editPanel.style.display==='block') renderEdit(); });
-document.getElementById('doneEdit').addEventListener('click', ()=>{ editPanel.style.display='none'; saveAll(); refreshSystemSelect(); if(systemSel.value&&document.getElementById('monthSel').value) buildGrid(); });
 
-function renderEdit(){
-  // systems
-  sysList.innerHTML=''; CONFIG.systems.forEach((s,i)=>{ const li=document.createElement('li'); li.style.display='flex'; li.style.gap='6px'; li.style.alignItems='center'; li.style.marginBottom='6px';
-    li.innerHTML = `<input value="${s}" data-i="${i}" class="sysName" style="flex:1;padding:8px;border-radius:8px;border:1px solid var(--border);background:#0e1221;color:#e8eaf6" />
-                    <button data-i="${i}" class="delSys danger" style="width:auto">Delete</button>`; sysList.appendChild(li); });
-  // points & fields for selected
-  const sys = systemSel.value || CONFIG.systems[0]; const cfg = CONFIG.bySystem[sys] || {points:["Point 1"], fields:["Value"]};
-  pointList.innerHTML=''; cfg.points.forEach((p,i)=>{ const li=document.createElement('li'); li.style.display='flex'; li.style.gap='6px'; li.style.alignItems='center'; li.style.marginBottom='6px';
-    li.innerHTML = `<input value="${p}" data-i="${i}" class="ptName" style="flex:1;padding:8px;border-radius:8px;border:1px solid var(--border);background:#0e1221;color:#e8eaf6" />
-                    <button data-i="${i}" class="delPoint danger" style="width:auto">Delete</button>`; pointList.appendChild(li); });
-  fieldList.innerHTML=''; cfg.fields.forEach((f,i)=>{ const li=document.createElement('li'); li.style.display='flex'; li.style.gap='6px'; li.style.alignItems='center'; li.style.marginBottom='6px';
-    li.innerHTML = `<input value="${f}" data-i="${i}" class="fdName" style="flex:1;padding:8px;border-radius:8px;border:1px solid var(--border);background:#0e1221;color:#e8eaf6" />
-                    <button data-i="${i}" class="delField danger" style="width:auto">Delete</button>`; fieldList.appendChild(li); });
-  // bind edits
-  sysList.addEventListener('input', sysInputHandler);
-  sysList.addEventListener('click', sysClickHandler);
-  pointList.addEventListener('input', ptInputHandler);
-  pointList.addEventListener('click', ptClickHandler);
-  fieldList.addEventListener('input', fdInputHandler);
-  fieldList.addEventListener('click', fdClickHandler);
-}
-function sysInputHandler(ev){ const ip=ev.target.closest('input.sysName'); if(!ip) return; const i=+ip.dataset.i; const old=CONFIG.systems[i]; const neo=ip.value.trim(); if(neo && neo!==old){ CONFIG.systems[i]=neo; CONFIG.bySystem[neo]=CONFIG.bySystem[old]||{points:["Point 1"],fields:["Value"]}; delete CONFIG.bySystem[old]; if(DB[old]){ DB[neo]=DB[old]; delete DB[old]; } saveAll(); refreshSystemSelect(); }}
-function sysClickHandler(ev){ const btn=ev.target.closest('button.delSys'); if(!btn) return; const i=+btn.dataset.i; const name=CONFIG.systems[i]; if(confirm(`Delete system "${name}"?`)){ CONFIG.systems.splice(i,1); delete CONFIG.bySystem[name]; saveAll(); refreshSystemSelect(); renderEdit(); }}
-function ptInputHandler(ev){ const ip=ev.target.closest('input.ptName'); if(!ip) return; const sys=systemSel.value||CONFIG.systems[0]; const idx=+ip.dataset.i; CONFIG.bySystem[sys].points[idx]=ip.value; saveAll(); if(systemSel.value&&document.getElementById('monthSel').value) buildGrid(); }
-function ptClickHandler(ev){ const btn=ev.target.closest('button.delPoint'); if(!btn) return; const sys=systemSel.value||CONFIG.systems[0]; const idx=+btn.dataset.i; const arr=CONFIG.bySystem[sys].points; const name=arr[idx]; if(confirm(`Delete point "${name}"?`)){ arr.splice(idx,1); saveAll(); renderEdit(); if(systemSel.value&&document.getElementById('monthSel').value) buildGrid(); }}
-function fdInputHandler(ev){ const ip=ev.target.closest('input.fdName'); if(!ip) return; const sys=systemSel.value||CONFIG.systems[0]; const idx=+ip.dataset.i; CONFIG.bySystem[sys].fields[idx]=ip.value; saveAll(); if(systemSel.value&&document.getElementById('monthSel').value) buildGrid(); }
-function fdClickHandler(ev){ const btn=ev.target.closest('button.delField'); if(!btn) return; const sys=systemSel.value||CONFIG.systems[0]; const idx=+btn.dataset.i; const arr=CONFIG.bySystem[sys].fields; const name=arr[idx]; if(confirm(`Delete field "${name}"?`)){ arr.splice(idx,1); saveAll(); renderEdit(); if(systemSel.value&&document.getElementById('monthSel').value) buildGrid(); }}
-
-function refreshSystemSelectInit(){ refreshSystemSelect(); const now=new Date(); document.getElementById('monthSel').value=now.toISOString().slice(0,7); systemSel.value=CONFIG.systems[0]||''; buildGrid(); }
-refreshSystemSelectInit();
+(function init(){
+  refreshSystemSelect();
+  const now=new Date();
+  monthSel.value = now.toISOString().slice(0,7);
+})();
 </script>
 </body>
 </html>
